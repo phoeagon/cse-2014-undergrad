@@ -319,6 +319,9 @@ rpcc::call1(unsigned int proc, marshall &req, unmarshall &rep,
 		ch->decref();
 
 	// destruction of req automatically frees its buffer
+	if (!ca.done) {
+		printf("timeout\n");
+	}
 	return (ca.done? ca.intret : rpc_const::timeout_failure);
 }
 
@@ -660,10 +663,60 @@ rpcs::rpcstate_t
 rpcs::checkduplicate_and_update(unsigned int clt_nonce, unsigned int xid,
                                 unsigned int xid_rep, char **b, int *sz)
 {
+	
     ScopedLock rwl(&reply_window_m_);
-
+	
     // Your lab3 code goes here
-    return NEW;
+    assert(xid_rep < xid);
+    std::list<reply_t>::iterator it;
+    std::list<reply_t> &reply_list = reply_window_[clt_nonce];
+
+    if (reply_list.size()) {
+    	if (xid <= reply_list.front().xid) {
+    		return FORGOTTEN;
+    	}
+
+    	if (xid_rep > reply_list.front().xid) {
+    		for (it = reply_list.begin(); it != reply_list.end() && it->xid < xid_rep; ++it)
+    			free(it->buf);
+    		reply_list.erase(reply_list.begin(), it);
+
+    		if (reply_list.size()) {
+    			if (reply_list.front().xid != xid_rep) {
+    				reply_list.push_front(reply_t(xid_rep));
+    			}
+    		} else {
+    			reply_list.push_front(reply_t(xid_rep));
+    		}
+    	}
+
+    	if (xid > reply_list.back().xid) {
+    		reply_list.push_back(reply_t(xid));
+    		return NEW;
+    	}
+
+    	for (it = reply_list.begin(); it != reply_list.end(); ++it) {
+    		if (it->xid == xid) {
+    			if (it->cb_present) {
+    				*b = it->buf;
+    				*sz = it->sz;
+    				return DONE;
+    			} else {
+    				return INPROGRESS;
+    			}
+    		} else {
+    			if (it->xid > xid) 
+    				break;
+    		}
+    	}
+
+    	reply_list.insert(it, reply_t(xid));
+    	return NEW;
+    } else {
+    	reply_list.push_back(reply_t(xid_rep));
+    	reply_list.push_back(reply_t(xid));
+    	return NEW;
+    }
 }
 
 // rpcs::dispatch calls add_reply when it is sending a reply to an RPC,
@@ -677,6 +730,17 @@ rpcs::add_reply(unsigned int clt_nonce, unsigned int xid, char *b, int sz)
     ScopedLock rwl(&reply_window_m_);
 
     // Your lab3 code goes here
+    std::list<reply_t> &reply_list = reply_window_[clt_nonce];
+    for (std::list<reply_t>::iterator it = reply_list.begin(); it != reply_list.end(); ++it) {
+		if (it->xid == xid) {
+			assert(!it->cb_present);
+			it->buf = b;
+			it->sz = sz;
+			it->cb_present = true;
+			return;
+		}
+    }
+    assert(false);
 }
 
 void

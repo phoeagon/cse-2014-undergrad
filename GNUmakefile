@@ -131,7 +131,7 @@ clean_files=rpc/rpctest rpc/*.o rpc/*.d rpc/librpc.a *.o *.d yfs_client extent_s
 clean: 
 	rm $(clean_files) -rf 
 
-handin_ignore=$(clean_files) core* *log
+handin_ignore=$(clean_files) core* *log .tags* .git .gitignore
 handin_file=lab$(LAB).tgz
 labdir=$(shell basename $(PWD))
 handin: 
