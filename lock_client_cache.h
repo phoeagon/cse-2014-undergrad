@@ -5,6 +5,7 @@
 #define lock_client_cache_h
 
 #include <string>
+#include <map>
 #include "lock_protocol.h"
 #include "rpc.h"
 #include "lock_client.h"
@@ -20,12 +21,28 @@ class lock_release_user {
   virtual ~lock_release_user() {};
 };
 
+struct lock_state_client {
+public:
+  rlock_protocol::rlkstatus state;
+  int pending;
+  bool locked;
+  lock_state_client();
+};
+
 class lock_client_cache : public lock_client {
  private:
   class lock_release_user *lu;
   int rlock_port;
   std::string hostname;
   std::string id;
+  pthread_mutex_t mut;
+  pthread_cond_t cond;
+
+  std::map<lock_protocol::lockid_t, lock_state_client> lock_states_client;
+  void _acquire(lock_protocol::lockid_t);
+  void _release(lock_protocol::lockid_t, bool broadcast = false);
+  lock_protocol::status _rpc_call(lock_protocol::rpc_numbers method, 
+    lock_protocol::lockid_t);  
  public:
   static int last_port;
   lock_client_cache(std::string xdst, class lock_release_user *l = 0);
