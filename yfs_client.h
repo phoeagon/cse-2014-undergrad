@@ -34,6 +34,10 @@ class yfs_client {
  private:
   static std::string filename(inum);
   static inum n2i(std::string);
+  static char *parsedir(char *p, int &remain, uint32_t &inum,  uint32_t &filelen, uint32_t &entrylen, std::string &name);
+  static void newdir(std::string &content);
+  static char *filldir(int &size, 
+    uint32_t inum, uint32_t newnamelen, uint32_t entrylen, const char *name, uint32_t preventrylen);
 
  public:
   yfs_client();
@@ -47,7 +51,7 @@ class yfs_client {
 
   int setattr(inum, size_t);
   int lookup(inum, const char *, bool &, inum &);
-  int create(inum, const char *, mode_t, inum &);
+  int create(inum, const char *, mode_t, inum &, int type);
   int readdir(inum, std::list<dirent> &);
   int write(inum, size_t, off_t, const char *, size_t &);
   int read(inum, size_t, off_t, std::string &);

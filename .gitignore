@@ -1,3 +1,9 @@
+*.a
 *.o
 *.d
+*.log
+*.swp
+.tags*
 lab1_tester
+yfs_client
+core

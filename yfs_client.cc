@@ -12,14 +12,52 @@
 yfs_client::yfs_client()
 {
     ec = new extent_client();
+    std::string content;
+    newdir(content);
+    if (ec->put(1, content) != extent_protocol::OK)  //initialize content
+        printf("error init root dir\n");
 
 }
 
 yfs_client::yfs_client(std::string extent_dst, std::string lock_dst)
 {
     ec = new extent_client();
-    if (ec->put(1, "") != extent_protocol::OK)
+    if (ec->put(1, "") != extent_protocol::OK) 
         printf("error init root dir\n"); // XYB: init root dir
+}
+
+void
+yfs_client::newdir(std::string &content) {
+    char buf[16];
+    // create a dummy entry
+    *((uint32_t *) buf) = 0;
+    *((uint32_t *) (buf + 4)) = 0;
+    *((uint32_t *) (buf + 8)) = 12;
+    content.assign(buf, 12);
+    return;
+}
+
+char *
+yfs_client::filldir(int &size, uint32_t inum, uint32_t newnamelen, uint32_t entrylen, const char *name, uint32_t preventrylen) {
+    char *cstr;
+    int offset = 0;
+    if (preventrylen) {
+        cstr = new char[16 + newnamelen];
+        *((uint32_t *) cstr) = preventrylen;
+        offset = 4;
+    } else {
+        cstr = new char[12 + newnamelen];
+    }
+
+    *((uint32_t *) (cstr + offset)) = inum;
+    *((uint32_t *) (cstr + offset + 4)) = newnamelen;
+    if (newnamelen) 
+        memcpy(cstr + offset + 8, name, newnamelen);
+    *((uint32_t *) (cstr + offset + newnamelen + 8)) = entrylen;
+
+    size = 12 + newnamelen + offset;
+
+    return cstr;
 }
 
 yfs_client::inum
@@ -37,6 +75,27 @@ yfs_client::filename(inum inum)
     std::ostringstream ost;
     ost << inum;
     return ost.str();
+}
+
+char *
+yfs_client::parsedir(char *p, int &remain, 
+    uint32_t &inum, uint32_t &filelen, uint32_t &entrylen, std::string &name) {
+    if (remain < 8) {
+        assert(remain == 0);
+        return NULL;
+    }
+    inum = *((uint32_t *) p);
+    filelen = *((uint32_t *) (p + 4));
+    if (remain < (int)(filelen + 12)) {
+        assert(0);
+    }
+    if (filelen)
+        name.assign(p + 8, filelen);
+    else
+        name = "";
+    entrylen = *((uint32_t *) (p + 8 + filelen));
+    remain -= entrylen;
+    return (p + entrylen);
 }
 
 bool
@@ -124,12 +183,22 @@ yfs_client::setattr(inum ino, size_t size)
      * note: get the content of inode ino, and modify its content
      * according to the size (<, =, or >) content length.
      */
+    std::string buf;
+    if ((r = ec->get(ino, buf)) != OK)
+        return r; 
+
+    if (size != buf.size()) {
+        buf.resize(size, '\0');
+    }
+
+    //TODO might need to modify time
+    r = ec->put(ino, buf);
 
     return r;
 }
 
 int
-yfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_out)
+yfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_out, int type)
 {
     int r = OK;
 
@@ -138,7 +207,63 @@ yfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_out)
      * note: lookup is what you need to check if file exist;
      * after create file or dir, you must remember to modify the parent infomation.
      */
+    inum ino;
+    bool found;
 
+    char *cstr, *pbuf, *nbuf, *ncstr;
+    uint32_t inum, namelen, entrylen;
+    std::string fname;
+    int remain;
+    int newnamelen;
+    int nsize;
+    size_t bytes_written;
+    std::string buf;
+
+    if ((r = lookup(parent, name, found, ino)) != OK)
+        return r;
+
+    if (found)
+        return EXIST;
+    if ((r = ec->create(type, ino)) != OK)
+        return r;
+    std::string content;
+    if (type == extent_protocol::T_DIR) {
+        newdir(content);
+        if ((r = ec->put(1, content) != extent_protocol::OK) != OK) {
+            printf("create dir failed\n");
+            return r;
+        }
+
+    }
+    ino_out = ino;
+
+
+    if ((r = ec->get(parent, buf)) != OK)
+        return r;
+    remain = buf.length();
+    cstr = new char[remain + 1];
+    memcpy(cstr, buf.c_str(), remain);
+    newnamelen = strlen(name);
+
+    pbuf = cstr;
+    
+    while ((nbuf = parsedir(pbuf, remain, inum, namelen, entrylen, fname))) {
+        if (newnamelen + namelen + 24 < entrylen) {
+            //inject an entry
+            ncstr = filldir(nsize, ino, newnamelen, entrylen - namelen - 12, name, namelen + 12);
+            r = write(parent, nsize, pbuf - cstr - 4, ncstr, bytes_written);
+            goto free_create;
+        }
+        pbuf = nbuf;
+    }
+
+    //append an entry
+    ncstr = filldir(nsize, ino, newnamelen, newnamelen + 12,name, 0);
+    r = write(parent, nsize, pbuf - cstr, ncstr, bytes_written);
+
+free_create:
+    delete[] cstr;
+    delete[] ncstr;
     return r;
 }
 
@@ -147,12 +272,24 @@ yfs_client::lookup(inum parent, const char *name, bool &found, inum &ino_out)
 {
     int r = OK;
 
+
     /*
      * your lab2 code goes here.
      * note: lookup file from parent dir according to name;
      * you should design the format of directory content.
      */
+    std::list<dirent> entries;
 
+    found = false;
+    if ((r = readdir(parent, entries)) != OK)
+        return r;
+    for (std::list<dirent>::iterator it = entries.begin(); it != entries.end(); ++it) {
+        if (!it->name.compare(name)) {
+            found = true;
+            ino_out = it->inum;
+            break;
+        }
+    }
     return r;
 }
 
@@ -166,7 +303,32 @@ yfs_client::readdir(inum dir, std::list<dirent> &list)
      * note: you should parse the dirctory content using your defined format,
      * and push the dirents to the list.
      */
+    char *cstr, *pbuf, *nbuf;
+    uint32_t inum, namelen, entrylen;
+    std::string fname;
+    int remain;
+    dirent dentry;
+    std::string buf;
+    list.clear();
 
+    if ((r = ec->get(dir, buf)) != OK)
+        return r;
+    remain = buf.length();
+    cstr = new char[remain + 1];
+    memcpy(cstr, buf.c_str(), remain);
+
+    pbuf = cstr;
+    while ((nbuf = parsedir(pbuf, remain, inum, namelen, entrylen, fname))) {
+        if (inum) {
+            dentry.inum = inum;
+            dentry.name = fname;
+            list.push_back(dentry);
+            printf("readdir: entry(%u, %s)\n", inum, fname.c_str());
+        }
+        pbuf = nbuf;
+    }
+
+    delete[] cstr;
     return r;
 }
 
@@ -179,6 +341,11 @@ yfs_client::read(inum ino, size_t size, off_t off, std::string &data)
      * your lab2 code goes here.
      * note: read using ec->get().
      */
+
+    std::string buf;
+    if ((r = ec->get(ino, buf)) != OK)
+        return r;
+    data = buf.substr(off, size);
 
     return r;
 }
@@ -194,7 +361,17 @@ yfs_client::write(inum ino, size_t size, off_t off, const char *data,
      * note: write using ec->put().
      * when off > length of original file, fill the holes with '\0'.
      */
+    std::string buf;
+    int len;
+    if ((r = ec->get(ino, buf)) != OK)
+        return r;
+    len = buf.size();
+    if (off + size > buf.size())
+        buf.resize(off + size, '\0');
 
+    buf = buf.replace(off, size, data, size);
+    bytes_written = off >= len ? off + size - len : size;
+    r = ec->put(ino, buf);
     return r;
 }
 
@@ -207,7 +384,47 @@ int yfs_client::unlink(inum parent,const char *name)
      * note: you should remove the file using ec->remove,
      * and update the parent directory content.
      */
+    
+    bool found;
+    inum ino;
 
+    char *cstr, *pbuf, *nbuf, *ncstr = NULL;
+    uint32_t inum, namelen, entrylen;
+    std::string fname;
+    int remain, nsize;
+    size_t bytes_written;
+    std::string buf;
+    std::list<dirent> hi;
+
+    if ((r = lookup(parent, name, found, ino)) != OK)
+        return r;
+
+    if (!found)
+        return NOENT;
+
+    if (isdir(ino))
+        return ENOTEMPTY;
+
+    if ((r = ec->get(parent, buf)) != extent_protocol::OK)
+        return r;
+
+    remain = buf.length();
+    cstr = new char[remain + 1];
+    memcpy(cstr, buf.c_str(), remain);
+    //printf("step 1\n");
+    //readdir(2, hi);
+
+    pbuf = cstr;
+    while ((nbuf = parsedir(pbuf, remain, inum, namelen, entrylen, fname))) {
+        if (inum && !fname.compare(name)) {
+            ncstr = filldir(nsize, 0, 0, entrylen, "", 0);
+            r = write(parent, nsize, pbuf - cstr, ncstr, bytes_written);
+            break;
+        }
+        pbuf = nbuf;
+    }
+    delete[] cstr;
+
+    r = ec->remove(ino);
     return r;
 }
-

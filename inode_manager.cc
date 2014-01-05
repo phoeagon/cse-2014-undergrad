@@ -134,7 +134,7 @@ inode_manager::alloc_inode(uint32_t type)
 		  if (ino->type == 0) {
 			  ino->type = type;
 			  ino->size = 0;
-			  ino->atime = ino->mtime = ino->ctime = cur;
+			  ino->mtime = ino->ctime = cur;
 			  for (int k = 0; k < NDIRECT + 1; k++)
 				  ino->blocks[k] = 0;
 			  bm->write_block(i + IBLOCK(0, bm->sb.nblocks), buf);
@@ -155,13 +155,16 @@ inode_manager::free_inode(uint32_t inum)
    */
 
 	struct inode *ino = get_inode(inum);
+	if (!ino)
+		return;
 	time_t cur = time(NULL);
 
 	if (ino->type) {
 		ino->type = 0;
-		ino->ctime = cur;
+		ino->mtime = ino->ctime = cur;
 		put_inode(inum, ino);
 	}
+	free(ino);
   return;
 }
 
@@ -229,7 +232,10 @@ inode_manager::read_file(uint32_t inum, char **buf_out, int *size)
 	 *
    */
 	struct inode *ino_disk = get_inode(inum);
+	if (!ino_disk)
+		return;
 	if (ino_disk->type == 0) {
+		free(ino_disk);
 		*buf_out = NULL;
 		*size = 0;
 		return;
@@ -243,6 +249,11 @@ inode_manager::read_file(uint32_t inum, char **buf_out, int *size)
 		bm->read_block(ino_disk->blocks[NDIRECT], ind_buf);
 
 	*size = ino_disk->size;
+	if (!*size) {
+		buf_out = NULL;
+		free(ino_disk);
+		return;
+	}
 	*buf_out = (char *) malloc(ino_disk->size * sizeof(char));
 	
 	int i;
@@ -255,6 +266,7 @@ inode_manager::read_file(uint32_t inum, char **buf_out, int *size)
 
 	ino_disk->atime = (uint32_t) cur;
 	put_inode(inum, ino_disk);
+	free(ino_disk);
 
 	return;
 }
@@ -270,8 +282,12 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size)
    * is larger or smaller than the size of original inode
    */
 	struct inode *ino_disk = get_inode(inum);
-	if (ino_disk->type == 0)
+	if (!ino_disk)
 		return;
+	if (ino_disk->type == 0) {
+		free(ino_disk);
+		return;
+	}
 
 	char ind_buf[BLOCK_SIZE];
 
@@ -288,7 +304,7 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size)
 	}
 
 	if (bc_new == bc) {
-		ino_disk->ctime = cur;
+		ino_disk->mtime = ino_disk->ctime = cur;
 		if ((uint32_t) size != ino_disk->size) {
 			ino_disk->size = (uint32_t) size;
 			ino_disk->ctime = cur;
@@ -324,7 +340,7 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size)
 		ino_disk->size = (uint32_t) size;
 		put_inode(inum, ino_disk);
 	}
-
+	free(ino_disk);
 	return;
 }
 
@@ -362,8 +378,12 @@ inode_manager::remove_file(uint32_t inum)
    */
 	struct inode *ino = get_inode(inum);
 	char ind_buf[BLOCK_SIZE];
-	if (!ino->type)
+	if (!ino)
 		return;
+	if (!ino->type) {
+		free(ino);
+		return;
+	}
 	
 	int bc = CEIL(ino->size, BLOCK_SIZE);
 	if (bc > NDIRECT) {
@@ -375,6 +395,7 @@ inode_manager::remove_file(uint32_t inum)
 		bm->free_block(BLK(ino, ind_buf, i));
 	}
 
+	free(ino);
 	free_inode(inum);
 
   return;
