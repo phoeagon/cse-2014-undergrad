@@ -38,7 +38,11 @@ yfs_client::filename(inum inum)
 
 bool
 yfs_client::isfile(inum inum)
-{
+{    /*
+     * your lab2 code goes here.
+     * note: you should remove the file using ec->remove,
+     * and update the parent directory content.
+     */
   //remove the following lines and fill this in lab1
   return false;
 }
@@ -76,7 +80,11 @@ yfs_client::create(inum parent, const std::string name,inum &ino)
 {
   
   int r = IOERR;
-  
+      /*
+     * your lab2 code goes here.
+     * note: you should remove the file using ec->remove,
+     * and update the parent directory content.
+     */
  release:
   return r;
 }
@@ -85,12 +93,22 @@ yfs_client::inum
 yfs_client::lookup(inum parent, const std::string name)
 {
   inum r = 0;
+    /*
+     * your lab2 code goes here.
+     * note: you should remove the file using ec->remove,
+     * and update the parent directory content.
+     */
  release:
   return r;
 }
 int yfs_client::readdir(inum ino,std::map<inum,std::string> &items)
 {
   int r = IOERR;
+    /*
+     * your lab2 code goes here.
+     * note: you should remove the file using ec->remove,
+     * and update the parent directory content.
+     */
 release:
   return r;
 }
@@ -98,11 +116,21 @@ release:
 int yfs_client::setattr(inum ino,int to_set,const fileinfo &info)
 {
   int r = IOERR;
+    /*
+     * your lab2 code goes here.
+     * note: you should remove the file using ec->remove,
+     * and update the parent directory content.
+     */
   return r;
 }
 int yfs_client::read(inum ino,size_t size,off_t off,std::string &buf)
 {
   int r = IOERR;
+    /*
+     * your lab2 code goes here.
+     * note: you should remove the file using ec->remove,
+     * and update the parent directory content.
+     */
   release:
   return r;
 }
@@ -110,6 +138,11 @@ int yfs_client::read(inum ino,size_t size,off_t off,std::string &buf)
 int yfs_client::write(inum ino,const char* buf,size_t &size,off_t off)
 {
   int r = IOERR;
+    /*
+     * your lab2 code goes here.
+     * note: you should remove the file using ec->remove,
+     * and update the parent directory content.
+     */
   release:
   return r;
 }
@@ -118,6 +151,11 @@ int
 yfs_client::mkdir(inum parent, const std::string name,inum &ino)
 {
   int r = IOERR;
+    /*
+     * your lab2 code goes here.
+     * note: you should remove the file using ec->remove,
+     * and update the parent directory content.
+     */
  release:
   return r;
 }
@@ -126,6 +164,11 @@ int
 yfs_client::unlink(inum parent, const std::string name)
 {
   int r = IOERR;
+    /*
+     * your lab2 code goes here.
+     * note: you should remove the file using ec->remove,
+     * and update the parent directory content.
+     */
  release:
   return r;
 }

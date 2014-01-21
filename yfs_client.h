@@ -35,6 +35,7 @@ class yfs_client {
  private:
   static std::string filename(inum);
   static inum n2i(std::string);
+
  public:
 
   yfs_client();

@@ -2,8 +2,6 @@
 
 ulimit -c unlimited
 
-
-
 YFSDIR1=$PWD/yfs1
 YFSDIR2=$PWD/yfs2
 

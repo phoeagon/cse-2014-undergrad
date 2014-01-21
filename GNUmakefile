@@ -1,4 +1,4 @@
-LAB=1
+LAB=2
 SOL=0
 RPC=./rpc
 LAB1GE=$(shell expr $(LAB) \>\= 1)
@@ -10,6 +10,7 @@ LAB6GE=$(shell expr $(LAB) \>\= 6)
 LAB7GE=$(shell expr $(LAB) \>\= 7)
 CXXFLAGS =  -g -MMD -Wall -I. -I$(RPC) -DLAB=$(LAB) -DSOL=$(SOL) -D_FILE_OFFSET_BITS=64
 FUSEFLAGS= -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=25 -I/usr/local/include/fuse -I/usr/include/fuse
+
 ifeq ($(shell uname -s),Darwin)
   MACFLAGS= -D__FreeBSD__=10
 else
@@ -34,8 +35,8 @@ CC = g++
 CXX = g++
 
 lab:  lab$(LAB)
-lab1: yfs_client
-lab2: rpc/rpctest lock_server lock_tester lock_demo yfs_client extent_server
+lab1: lab1_tester
+lab2: yfs_client 
 lab3: yfs_client extent_server lock_server test-lab-3-b test-lab-3-c
 lab4: yfs_client extent_server lock_server lock_tester test-lab-3-b\
 	 test-lab-3-c
@@ -87,7 +88,9 @@ endif
 
 lock_server : $(patsubst %.cc,%.o,$(lock_server)) rpc/librpc.a
 
-yfs_client=yfs_client.cc extent_client.cc fuse.cc
+lab1_tester=lab1_tester.cc extent_client.cc extent_server.cc inode_manager.cc
+lab1_tester : $(patsubst %.cc,%.o,$(lab1_tester))
+yfs_client=yfs_client.cc extent_client.cc fuse.cc extent_server.cc inode_manager.cc
 ifeq ($(LAB3GE),1)
   yfs_client += lock_client.cc
 endif
@@ -97,7 +100,7 @@ endif
 ifeq ($(LAB4GE),1)
   yfs_client += lock_client_cache.cc
 endif
-yfs_client : $(patsubst %.cc,%.o,$(yfs_client))
+yfs_client : $(patsubst %.cc,%.o,$(yfs_client)) rpc/librpc.a
 
 extent_server=extent_server.cc extent_smain.cc
 extent_server : $(patsubst %.cc,%.o,$(extent_server)) rpc/librpc.a
@@ -117,22 +120,21 @@ rsm_tester:  $(patsubst %.cc,%.o,$(rsm_tester)) rpc/librpc.a
 fuse.o: fuse.cc
 	$(CXX) -c $(CXXFLAGS) $(FUSEFLAGS) $(MACFLAGS) $<
 
-# mklab.inc is needed by staff only. Just ignore it.
+# mklab.inc is needed by 6.824 staff only. Just ignore it.
 -include mklab.inc
 
 -include *.d
 -include rpc/*.d
 
-clean_files=rpc/rpctest rpc/*.o rpc/*.d rpc/librpc.a *.o *.d yfs_client extent_server lock_server lock_tester lock_demo rpctest test-lab-3-b test-lab-3-c rsm_tester
+clean_files=rpc/rpctest rpc/*.o rpc/*.d rpc/librpc.a *.o *.d yfs_client extent_server lock_server lock_tester lock_demo rpctest test-lab-3-b test-lab-3-c rsm_tester lab1_tester
 .PHONY: clean handin
 clean: 
 	rm $(clean_files) -rf 
 
 handin_ignore=$(clean_files) core* *log
-handin_file=$(shell whoami)-lab$(LAB)-112037xxxx.tgz
+handin_file=lab$(LAB).tgz
 labdir=$(shell basename $(PWD))
 handin: 
-	@if test -f stop.sh; then ./stop.sh > /dev/null 2>&1 | echo ""; fi
 	@bash -c "cd ../; tar -X <(tr ' ' '\n' < <(echo '$(handin_ignore)')) -czvf $(handin_file) $(labdir); mv $(handin_file) $(labdir); cd $(labdir)"
-	@echo Please change the name of $(handin_file) and email it to xiayubin@gmail.com
+	@echo Please modify lab2.tgz to lab1_[your student id].tgz and upload it to ftp://ytliu.cc:public@public.sjtu.edu.cn/upload/	
 	@echo Thanks!
