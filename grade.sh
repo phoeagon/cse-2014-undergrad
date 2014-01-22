@@ -39,6 +39,12 @@ then
         echo "Failed test-e"
         exit
 fi
+ps -e | grep -q "yfs_client"
+if [ $? -ne 0 ];
+then
+        echo "yfs_client DIED!"
+        exit
+fi
 echo "Passed E"
 
 # finally reaches here!
