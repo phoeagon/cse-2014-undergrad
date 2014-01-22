@@ -52,6 +52,8 @@ class yfs_client {
   int write(inum, size_t, off_t, const char *, size_t &);
   int read(inum, size_t, off_t, std::string &);
   int unlink(inum,const char *);
+  
+  /** you may need to add symbolic link related methods here.*/
 };
 
 #endif 
